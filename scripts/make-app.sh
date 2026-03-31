@@ -6,8 +6,17 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 APP_DIR="$ROOT_DIR/dist/RunRat.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
+RESOURCES_DIR="$CONTENTS_DIR/Resources"
+FRAME_SOURCE_PATH="$ROOT_DIR/art/rat_frames_clean"
+FRAMES_DIR="$ROOT_DIR/Sources/RunRat/Resources/Frames"
+PREVIEW_PATH="$ROOT_DIR/tmp-frame-previews/final_menu_strip.png"
+MANIFEST_PATH="$ROOT_DIR/Sources/RunRat/Resources/rat_frame_manifest.txt"
 
 cd "$ROOT_DIR"
+swift scripts/build-rat-frames.swift "$FRAME_SOURCE_PATH" "$FRAMES_DIR" "$PREVIEW_PATH"
+
+find "$ROOT_DIR/.build" -type d -name 'RunRat_RunRat.bundle' -prune -exec rm -rf {} +
+
 swift build -c release
 
 BINARY_PATH="$(
@@ -21,9 +30,26 @@ fi
 
 rm -rf "$APP_DIR"
 mkdir -p "$MACOS_DIR"
+mkdir -p "$RESOURCES_DIR"
 
 cp "$BINARY_PATH" "$MACOS_DIR/RunRat"
 chmod +x "$MACOS_DIR/RunRat"
+
+find "$(dirname "$BINARY_PATH")" -maxdepth 1 -type d -name '*.bundle' -exec cp -R {} "$RESOURCES_DIR/" \;
+
+if [[ -f "$MANIFEST_PATH" ]]; then
+    FRAME_COUNT="$(tr -d '[:space:]' < "$MANIFEST_PATH")"
+    if [[ "$FRAME_COUNT" =~ ^[0-9]+$ ]]; then
+        while IFS= read -r frame_path; do
+            frame_name="$(basename "$frame_path")"
+            frame_index="${frame_name#rat_frame_}"
+            frame_index="${frame_index%.png}"
+            if [[ "$frame_index" =~ ^[0-9]+$ ]] && (( frame_index >= FRAME_COUNT )); then
+                rm -f "$frame_path"
+            fi
+        done < <(find "$RESOURCES_DIR" -path '*/RunRat_RunRat.bundle/rat_frame_*.png' -type f | sort)
+    fi
+fi
 
 cat > "$CONTENTS_DIR/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

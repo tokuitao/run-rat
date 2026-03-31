@@ -16,7 +16,10 @@ let package = Package(
     ],
     targets: [
         .executableTarget(
-            name: "RunRat"
+            name: "RunRat",
+            resources: [
+                .process("Resources"),
+            ]
         ),
     ],
     swiftLanguageModes: [.v6]

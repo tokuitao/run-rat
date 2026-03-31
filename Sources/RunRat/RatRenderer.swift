@@ -1,103 +1,160 @@
 import AppKit
 
-struct RatPose {
-    let bodyBob: CGFloat
-    let headBob: CGFloat
-    let frontLift: CGFloat
-    let rearLift: CGFloat
-    let tailLift: CGFloat
-}
-
 enum RatRenderer {
-    static let poses: [RatPose] = [
-        RatPose(bodyBob: 0.0, headBob: 0.0, frontLift: 0.5, rearLift: -2.0, tailLift: 0.5),
-        RatPose(bodyBob: -0.4, headBob: -0.3, frontLift: -1.8, rearLift: 0.8, tailLift: 1.8),
-        RatPose(bodyBob: 0.3, headBob: 0.2, frontLift: 1.1, rearLift: -0.9, tailLift: -0.2),
-        RatPose(bodyBob: -0.5, headBob: -0.4, frontLift: -2.1, rearLift: 1.4, tailLift: 2.0),
-        RatPose(bodyBob: 0.1, headBob: 0.2, frontLift: 0.7, rearLift: -1.6, tailLift: 0.1),
-        RatPose(bodyBob: -0.2, headBob: -0.1, frontLift: -1.3, rearLift: 0.7, tailLift: 1.2),
-    ]
+    private static let targetHeight = max(NSStatusBar.system.thickness - 1, 21)
+
+    private static let frames: [NSImage] = {
+        var loadedFrames: [NSImage] = []
+        let manifestCount = frameCountFromManifest()
+
+        if let manifestCount {
+            for index in 0 ..< manifestCount {
+                guard let image = loadFrame(index: index) else {
+                    continue
+                }
+                image.isTemplate = true
+                loadedFrames.append(image)
+            }
+        } else {
+            for url in frameURLs() {
+                guard let image = NSImage(contentsOf: url) else {
+                    continue
+                }
+                image.isTemplate = true
+                loadedFrames.append(image)
+            }
+        }
+
+        return loadedFrames.isEmpty ? [fallbackFrame()] : loadedFrames
+    }()
+
+    static let frameCount = frames.count
+
+    private static let widestAspectRatio: CGFloat = {
+        frames.map { $0.size.width / max($0.size.height, 1) }.max() ?? 3.6
+    }()
+
+    static let canvasSize = NSSize(
+        width: ceil(CGFloat(targetHeight) * widestAspectRatio) + 6,
+        height: targetHeight
+    )
 
     static func makeImage(frameIndex: Int) -> NSImage {
-        let pose = poses[frameIndex % poses.count]
-        let imageSize = NSSize(width: 36, height: 18)
-        let image = NSImage(size: imageSize)
+        let source = frames[frameIndex % frames.count]
+        let image = NSImage(size: canvasSize)
+
         image.lockFocus()
-
-        let color = NSColor.black
-        color.setFill()
-        color.setStroke()
-
-        drawTail(pose: pose)
-        drawBody(pose: pose)
-        drawHead(pose: pose)
-        drawLegs(pose: pose)
-        drawWhiskers(pose: pose)
-
+        NSGraphicsContext.current?.imageInterpolation = .high
+        source.draw(
+            in: fittedRect(for: source.size, in: canvasSize),
+            from: NSRect(origin: .zero, size: source.size),
+            operation: .sourceOver,
+            fraction: 1
+        )
         image.unlockFocus()
+
         image.isTemplate = true
         return image
     }
 
-    private static func drawBody(pose: RatPose) {
-        let bodyRect = NSRect(x: 10, y: 4.5 + pose.bodyBob, width: 16, height: 8)
-        NSBezierPath(roundedRect: bodyRect, xRadius: 5, yRadius: 5).fill()
+    private static func frameCountFromManifest() -> Int? {
+        let manifestURLs = [
+            Bundle.module.url(forResource: "rat_frame_manifest", withExtension: "txt"),
+            Bundle.module.url(forResource: "rat_frame_manifest", withExtension: "txt", subdirectory: "Frames"),
+        ].compactMap { $0 }
 
-        let haunchRect = NSRect(x: 7.5, y: 5.5 + pose.bodyBob, width: 7, height: 6)
-        NSBezierPath(ovalIn: haunchRect).fill()
+        for manifestURL in manifestURLs {
+            guard let text = try? String(contentsOf: manifestURL, encoding: .utf8) else {
+                continue
+            }
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let count = Int(trimmed), count > 0 {
+                return count
+            }
+        }
+        return nil
     }
 
-    private static func drawHead(pose: RatPose) {
-        let headRect = NSRect(x: 23, y: 6.2 + pose.headBob, width: 8.5, height: 6.5)
-        NSBezierPath(ovalIn: headRect).fill()
+    private static func loadFrame(index: Int) -> NSImage? {
+        let frameURLs = [
+            Bundle.module.url(forResource: "rat_frame_\(index)", withExtension: "png"),
+            Bundle.module.url(forResource: "rat_frame_\(index)", withExtension: "png", subdirectory: "Frames"),
+        ].compactMap { $0 }
 
-        NSBezierPath(ovalIn: NSRect(x: 24.2, y: 11.3 + pose.headBob, width: 3.2, height: 3.2)).fill()
-        NSBezierPath(ovalIn: NSRect(x: 26.8, y: 11.8 + pose.headBob, width: 2.8, height: 2.8)).fill()
+        for frameURL in frameURLs {
+            if let image = NSImage(contentsOf: frameURL) {
+                return image
+            }
+        }
 
-        NSBezierPath(ovalIn: NSRect(x: 29.8, y: 8.7 + pose.headBob, width: 1.4, height: 1.4)).fill()
+        return nil
     }
 
-    private static func drawTail(pose: RatPose) {
+    private static func frameURLs() -> [URL] {
+        let rootURLs = Bundle.module.urls(forResourcesWithExtension: "png", subdirectory: nil) ?? []
+        let frameURLs = rootURLs
+            .filter { isOutputFrameName($0.lastPathComponent) }
+            .sorted {
+                frameNumber(for: $0) < frameNumber(for: $1)
+            }
+
+        if !frameURLs.isEmpty {
+            return frameURLs
+        }
+
+        let nestedURLs = Bundle.module.urls(forResourcesWithExtension: "png", subdirectory: "Frames") ?? []
+        return nestedURLs
+            .filter { isOutputFrameName($0.lastPathComponent) }
+            .sorted {
+                frameNumber(for: $0) < frameNumber(for: $1)
+            }
+    }
+
+    private static func isOutputFrameName(_ name: String) -> Bool {
+        name.hasPrefix("rat_frame_") && name.hasSuffix(".png") && frameNumber(in: name) != nil
+    }
+
+    private static func frameNumber(for url: URL) -> Int {
+        frameNumber(in: url.lastPathComponent) ?? 0
+    }
+
+    private static func frameNumber(in name: String) -> Int? {
+        let digits = name.filter(\.isNumber)
+        return digits.isEmpty ? nil : Int(digits)
+    }
+
+    private static func fittedRect(for contentSize: NSSize, in canvas: NSSize) -> NSRect {
+        let availableRect = NSRect(x: 2, y: 0, width: canvas.width - 4, height: canvas.height)
+        let scale = min(availableRect.width / contentSize.width, availableRect.height / contentSize.height)
+        let destinationSize = NSSize(width: contentSize.width * scale, height: contentSize.height * scale)
+
+        return NSRect(
+            x: round((canvas.width - destinationSize.width) / 2),
+            y: round((canvas.height - destinationSize.height) / 2),
+            width: round(destinationSize.width),
+            height: round(destinationSize.height)
+        )
+    }
+
+    private static func fallbackFrame() -> NSImage {
+        let fallbackSize = NSSize(width: 84, height: targetHeight)
+        let image = NSImage(size: fallbackSize)
+        image.lockFocus()
+        NSColor.black.setFill()
+        NSBezierPath(ovalIn: NSRect(x: 14, y: 6, width: 42, height: 10)).fill()
+
         let tail = NSBezierPath()
-        tail.lineWidth = 1.8
+        tail.lineWidth = 2
         tail.lineCapStyle = .round
-        tail.move(to: NSPoint(x: 8.5, y: 9))
+        tail.move(to: NSPoint(x: 18, y: 12))
         tail.curve(
-            to: NSPoint(x: 1.2, y: 12.2 + pose.tailLift),
-            controlPoint1: NSPoint(x: 5.0, y: 11.5 + pose.tailLift * 0.4),
-            controlPoint2: NSPoint(x: 2.4, y: 12.8 + pose.tailLift)
+            to: NSPoint(x: 3, y: 13),
+            controlPoint1: NSPoint(x: 11, y: 15),
+            controlPoint2: NSPoint(x: 6, y: 14)
         )
         tail.stroke()
-    }
-
-    private static func drawLegs(pose: RatPose) {
-        drawLeg(from: NSPoint(x: 14.5, y: 4.8 + pose.bodyBob), hipOffset: 0.0, footLift: pose.rearLift)
-        drawLeg(from: NSPoint(x: 24.0, y: 5.0 + pose.bodyBob), hipOffset: 0.4, footLift: pose.frontLift)
-    }
-
-    private static func drawLeg(from start: NSPoint, hipOffset: CGFloat, footLift: CGFloat) {
-        let leg = NSBezierPath()
-        leg.lineWidth = 2.0
-        leg.lineCapStyle = .round
-        leg.move(to: start)
-        leg.line(to: NSPoint(x: start.x - 0.7 + hipOffset, y: start.y - 2.7))
-        leg.line(to: NSPoint(x: start.x + 1.6 - hipOffset, y: start.y - 5.2 + footLift))
-        leg.stroke()
-    }
-
-    private static func drawWhiskers(pose: RatPose) {
-        let whiskers = NSBezierPath()
-        whiskers.lineWidth = 0.9
-        whiskers.lineCapStyle = .round
-
-        let noseX: CGFloat = 30.6
-        let noseY: CGFloat = 9.4 + pose.headBob
-        whiskers.move(to: NSPoint(x: noseX, y: noseY))
-        whiskers.line(to: NSPoint(x: 34.3, y: noseY + 1.3))
-        whiskers.move(to: NSPoint(x: noseX, y: noseY - 0.2))
-        whiskers.line(to: NSPoint(x: 34.6, y: noseY - 0.1))
-        whiskers.move(to: NSPoint(x: noseX, y: noseY - 0.4))
-        whiskers.line(to: NSPoint(x: 34.0, y: noseY - 1.5))
-        whiskers.stroke()
+        image.unlockFocus()
+        image.isTemplate = true
+        return image
     }
 }

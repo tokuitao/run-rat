@@ -9,6 +9,7 @@ It is inspired by the playful idea behind RunCat, but this repository contains a
 - Lives in the macOS menu bar
 - Samples CPU usage once per second
 - Animates a rat icon based on current system load
+- Includes a fixed preview speed mode for motion tuning
 - Shows a simple CPU percentage and pace label in the menu
 - Builds into a standalone `.app` bundle
 
@@ -17,6 +18,21 @@ It is inspired by the playful idea behind RunCat, but this repository contains a
 - macOS 13 or later
 - Swift 6.3 or later
 - Xcode Command Line Tools or Xcode
+
+## Download
+
+Download the latest `RunRat-macOS.zip` asset from [GitHub Releases](https://github.com/tokuitao/run-rat/releases), then extract `RunRat.app`.
+
+Because the app is currently unsigned and not notarized, macOS may warn on first launch. If that happens:
+
+1. Right-click `RunRat.app` and choose `Open`
+2. Click `Open` again in the system dialog
+
+If you prefer Terminal, you can also remove the quarantine flag manually:
+
+```bash
+xattr -dr com.apple.quarantine RunRat.app
+```
 
 ## Development
 
@@ -46,7 +62,7 @@ The generated bundle will be placed at `dist/RunRat.app`.
 
 - The app is currently unsigned and not notarized
 - This repository does not include assets or code copied from RunCat
-- The visual is drawn programmatically with AppKit
+- The visual is played from bundled frame images
 
 ## Contributing
 

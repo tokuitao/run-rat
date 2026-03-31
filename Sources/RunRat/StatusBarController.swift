@@ -2,16 +2,23 @@ import AppKit
 
 @MainActor
 final class StatusBarController {
-    private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+    private enum DefaultsKey {
+        static let usesFixedPreviewSpeed = "usesFixedPreviewSpeed"
+    }
+
+    private let statusItem = NSStatusBar.system.statusItem(withLength: RatRenderer.canvasSize.width + 2)
     private let menu = NSMenu()
     private let cpuUsageItem = NSMenuItem(title: "CPU usage: --", action: nil, keyEquivalent: "")
     private let paceItem = NSMenuItem(title: "Rat pace: warming up", action: nil, keyEquivalent: "")
+    private let playbackItem = NSMenuItem(title: "Playback: --", action: nil, keyEquivalent: "")
+    private let fixedPreviewItem = NSMenuItem(title: "Use Fixed Preview Speed", action: #selector(toggleFixedPreviewSpeed), keyEquivalent: "f")
     private let cpuMonitor = CPUUsageMonitor()
 
-    private var animator = RatAnimator(frameCount: RatRenderer.poses.count)
+    private var animator = RatAnimator(frameCount: RatRenderer.frameCount)
     private var animationTimer: Timer?
     private var cpuTimer: Timer?
     private var cpuUsage = 0.0
+    private var usesFixedPreviewSpeed = UserDefaults.standard.bool(forKey: DefaultsKey.usesFixedPreviewSpeed)
     private var lastAnimationTick = Date()
 
     func start() {
@@ -20,7 +27,7 @@ final class StatusBarController {
         sampleCPU()
 
         animationTimer = Timer.scheduledTimer(
-            timeInterval: 1.0 / 30.0,
+            timeInterval: 1.0 / 60.0,
             target: self,
             selector: #selector(handleAnimationTick),
             userInfo: nil,
@@ -44,33 +51,54 @@ final class StatusBarController {
     private func configureMenu() {
         cpuUsageItem.isEnabled = false
         paceItem.isEnabled = false
+        playbackItem.isEnabled = false
+        fixedPreviewItem.target = self
+        fixedPreviewItem.state = usesFixedPreviewSpeed ? .on : .off
+
+        let quitItem = NSMenuItem(title: "Quit RunRat", action: #selector(quit), keyEquivalent: "q")
+        quitItem.target = self
 
         menu.autoenablesItems = false
         menu.items = [
             cpuUsageItem,
             paceItem,
+            playbackItem,
+            fixedPreviewItem,
             .separator(),
-            NSMenuItem(title: "Quit RunRat", action: #selector(quit), keyEquivalent: "q"),
+            quitItem,
         ]
 
         if let button = statusItem.button {
             button.imagePosition = .imageOnly
-            button.imageScaling = .scaleProportionallyDown
+            button.imageScaling = .scaleNone
             button.toolTip = "RunRat"
         }
 
         statusItem.menu = menu
     }
 
+    private var playbackMode: RatAnimator.PlaybackMode {
+        usesFixedPreviewSpeed ? .fixedPreview : .adaptive(cpuUsage: cpuUsage)
+    }
+
     private func refreshIcon() {
         statusItem.button?.image = RatRenderer.makeImage(frameIndex: animator.frameIndex)
-        statusItem.button?.toolTip = "RunRat - CPU \(Int((cpuUsage * 100).rounded()))%"
+        let fps = RatAnimator.framesPerSecond(for: playbackMode)
+        let modeLabel = usesFixedPreviewSpeed ? "fixed" : "adaptive"
+        statusItem.button?.toolTip = String(
+            format: "RunRat - CPU %d%% - %@ %.1f fps",
+            Int((cpuUsage * 100).rounded()),
+            modeLabel,
+            fps
+        )
     }
 
     private func updateMenuText() {
         let percentage = Int((cpuUsage * 100).rounded())
         cpuUsageItem.title = "CPU usage: \(percentage)%"
-        paceItem.title = "Rat pace: \(RatAnimator.paceLabel(for: cpuUsage))"
+        paceItem.title = "Rat pace: \(RatAnimator.paceLabel(for: playbackMode))"
+        playbackItem.title = String(format: "Playback: %.1f fps", RatAnimator.framesPerSecond(for: playbackMode))
+        fixedPreviewItem.state = usesFixedPreviewSpeed ? .on : .off
     }
 
     private func sampleCPU() {
@@ -83,7 +111,7 @@ final class StatusBarController {
         let delta = now.timeIntervalSince(lastAnimationTick)
         lastAnimationTick = now
 
-        guard animator.tick(deltaTime: delta, cpuUsage: cpuUsage) else {
+        guard animator.tick(deltaTime: delta, playbackMode: playbackMode) else {
             return
         }
 
@@ -92,6 +120,13 @@ final class StatusBarController {
 
     @objc private func handleCPUTick() {
         sampleCPU()
+        refreshIcon()
+    }
+
+    @objc private func toggleFixedPreviewSpeed() {
+        usesFixedPreviewSpeed.toggle()
+        UserDefaults.standard.set(usesFixedPreviewSpeed, forKey: DefaultsKey.usesFixedPreviewSpeed)
+        updateMenuText()
         refreshIcon()
     }
 
