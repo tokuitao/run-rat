@@ -53,14 +53,41 @@ open dist/RunRat.app
 
 The generated bundle will be placed at `dist/RunRat.app`.
 
+## Maintainer Release Flow
+
+Build a signed and notarized release zip with:
+
+```bash
+export RUNRAT_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+export RUNRAT_NOTARY_PROFILE="runrat-notary"
+./scripts/sign-and-notarize.sh
+```
+
+Before that, store notarization credentials once on the maintainer Mac:
+
+```bash
+xcrun notarytool store-credentials "runrat-notary" \
+  --apple-id "YOUR_APPLE_ID" \
+  --team-id "YOUR_TEAM_ID" \
+  --password "YOUR_APP_SPECIFIC_PASSWORD"
+```
+
+After `scripts/sign-and-notarize.sh` finishes, upload the generated zip to the existing GitHub release:
+
+```bash
+gh release upload v0.1.0 dist/RunRat-macOS.zip --clobber
+```
+
 ## Project Structure
 
 - `Sources/RunRat/` contains the menu bar app, CPU monitor, animation logic, and rat renderer
 - `scripts/make-app.sh` builds a release binary and packages it as a macOS app bundle
+- `scripts/sign-and-notarize.sh` signs, notarizes, staples, and re-zips the app for distribution
 
 ## Notes
 
 - The app is currently unsigned and not notarized
+- Shipping a smooth double-click install experience requires a Developer ID Application certificate and Apple notarization credentials
 - This repository does not include assets or code copied from RunCat
 - The visual is played from bundled frame images
 
