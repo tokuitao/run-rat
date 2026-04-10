@@ -1,7 +1,10 @@
 import Darwin.Mach
+import os
 
 final class CPUUsageMonitor {
     private var previousTicks: [UInt64]?
+    private var previousSamples: [Double] = []
+    private let sampleWindow = 5
 
     func sampleUsage() -> Double {
         var loadInfo = host_cpu_load_info()
@@ -16,7 +19,8 @@ final class CPUUsageMonitor {
         }
 
         guard result == KERN_SUCCESS else {
-            return 0
+            os_log("RunRat: CPU sampling failed (error: %d)", log: .default, type: .debug, result)
+            return previousSamples.isEmpty ? 0.1 : previousSamples.last!
         }
 
         let currentTicks: [UInt64] = [
@@ -28,7 +32,9 @@ final class CPUUsageMonitor {
 
         guard let previousTicks else {
             self.previousTicks = currentTicks
-            return 0
+            let defaultSample = 0.1
+            previousSamples.append(defaultSample)
+            return defaultSample
         }
 
         self.previousTicks = currentTicks
@@ -39,11 +45,18 @@ final class CPUUsageMonitor {
 
         let totalDelta = deltas.reduce(0, +)
         guard totalDelta > 0 else {
-            return 0
+            return previousSamples.isEmpty ? 0.1 : previousSamples.last!
         }
 
         let idleDelta = deltas[Int(CPU_STATE_IDLE)]
         let usage = Double(totalDelta - idleDelta) / Double(totalDelta)
-        return min(max(usage, 0), 1)
+        let clampedUsage = min(max(usage, 0), 1)
+
+        previousSamples.append(clampedUsage)
+        if previousSamples.count > sampleWindow {
+            previousSamples.removeFirst()
+        }
+
+        return previousSamples.reduce(0, +) / Double(previousSamples.count)
     }
 }

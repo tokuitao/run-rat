@@ -35,7 +35,7 @@ final class StatusBarController {
         )
 
         cpuTimer = Timer.scheduledTimer(
-            timeInterval: 1.0,
+            timeInterval: 0.5,
             target: self,
             selector: #selector(handleCPUTick),
             userInfo: nil,
@@ -82,7 +82,7 @@ final class StatusBarController {
     }
 
     private func refreshIcon() {
-        statusItem.button?.image = RatRenderer.makeImage(frameIndex: animator.frameIndex)
+        statusItem.button?.image = RatRenderer.cachedImage(frameIndex: animator.frameIndex)
         let fps = RatAnimator.framesPerSecond(for: playbackMode)
         let modeLabel = usesFixedPreviewSpeed ? "fixed" : "adaptive"
         statusItem.button?.toolTip = String(
@@ -111,7 +111,9 @@ final class StatusBarController {
         let delta = now.timeIntervalSince(lastAnimationTick)
         lastAnimationTick = now
 
-        guard animator.tick(deltaTime: delta, playbackMode: playbackMode) else {
+        let clampedDelta = min(delta, 0.05)
+
+        guard animator.tick(deltaTime: clampedDelta, playbackMode: playbackMode) else {
             return
         }
 
