@@ -1,4 +1,5 @@
 import AppKit
+import os
 
 enum RatRenderer {
     private static let targetHeight = max(NSStatusBar.system.thickness - 1, 21)
@@ -29,6 +30,14 @@ enum RatRenderer {
     }()
 
     static let frameCount = frames.count
+
+    static let cachedImages: [NSImage] = {
+        return (0..<frameCount).map { makeImage(frameIndex: $0) }
+    }()
+
+    static func cachedImage(frameIndex: Int) -> NSImage {
+        cachedImages[frameIndex % cachedImages.count]
+    }
 
     private static let widestAspectRatio: CGFloat = {
         frames.map { $0.size.width / max($0.size.height, 1) }.max() ?? 3.6
@@ -87,6 +96,7 @@ enum RatRenderer {
             }
         }
 
+        os_log("RunRat: Failed to load frame %d", log: .default, type: .debug, index)
         return nil
     }
 

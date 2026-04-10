@@ -6,9 +6,9 @@ struct RatAnimator {
         case fixedPreview
     }
 
-    static let referenceFrameDuration = 0.085
+    static let referenceFrameDuration = 0.033
     static let referenceFramesPerSecond = 1.0 / referenceFrameDuration
-    private static let maximumAdaptiveMultiplier = 1.35
+    private static let maximumAdaptiveMultiplier = 2.0
 
     private(set) var frameIndex = 0
     private var frameProgress = 0.0
@@ -26,9 +26,8 @@ struct RatAnimator {
             return false
         }
 
-        let advancedFrames = Int(frameProgress)
-        frameProgress -= Double(advancedFrames)
-        frameIndex = (frameIndex + advancedFrames) % frameCount
+        frameIndex = (frameIndex + 1) % frameCount
+        frameProgress -= 1.0
         return true
     }
 
