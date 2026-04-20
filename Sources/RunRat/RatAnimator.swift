@@ -6,7 +6,7 @@ struct RatAnimator {
         case fixedPreview
     }
 
-    static let referenceFrameDuration = 0.033
+    static let referenceFrameDuration = 0.0167
     static let referenceFramesPerSecond = 1.0 / referenceFrameDuration
     private static let maximumAdaptiveMultiplier = 2.0
 
